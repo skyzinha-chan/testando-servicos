@@ -42,15 +42,27 @@ def compare_zip_files(local_zip_path, bucket_name, s3_key):
 
 
 def upload_to_s3(bucket_name, file_name, key):
+    s3_client = boto3.client('s3')
+
     # Verifica se o arquivo já foi enviado
-    if compare_zip_files(file_name, bucket_name, key):
-        logger.info(
-            f"O arquivo '{file_name}' não foi alterado. Pulando o upload.")
-        return
+    try:
+        s3_client.head_object(Bucket=bucket_name, Key=key)
+        # Se o arquivo existe, faça a comparação
+        if compare_zip_files(file_name, bucket_name, key):
+            logger.info(
+                f"O arquivo '{file_name}' não foi alterado. Pulando o upload.")
+            return
+    except s3_client.exceptions.ClientError as e:
+        # Se o erro for 404, significa que o arquivo não existe
+        if e.response['Error']['Code'] == '404':
+            logger.info(
+                f"O arquivo '{key}' não existe no S3. Prosseguindo com o upload.")
+        else:
+            logger.error(
+                f"Erro ao verificar a existência do arquivo '{key}': {e}")
+            return
 
     # Se o arquivo local for diferente, faça o upload
-    # Função para enviar os arquivos para o S3
-    s3_client = boto3.client('s3')
     try:
         s3_client.upload_file(file_name, bucket_name, key)
         logger.info(f"Arquivo '{file_name}' enviado para o S3 com sucesso.")
@@ -71,13 +83,13 @@ def create_lambda(lambda_name, role_arn, bucket_lambda_code_name, bucket_layers_
     # Se layer_zip_path não for None, faça o upload da layer
     if layer_zip_path:
         # Nome da layer associado à Lambda
-        layer_key = f"layers/{lambda_name}-layer.zip"
+        layer_key = f"layers/{lambda_name}-layers.zip"
         upload_to_s3(bucket_layers_name, layer_zip_path, layer_key)
 
         # Criar a layer
         layer_arn = create_layer(
             # Nome da layer, que inclui o nome da Lambda para clareza
-            layer_name=f"{lambda_name}-layer",
+            layer_name=f"{lambda_name}-layers",
             bucket_name=bucket_layers_name,
             zip_file=layer_key,  # Usar a chave do arquivo no S3
             description=layer_description  # Passando a descrição da layer
@@ -224,7 +236,6 @@ sem o bloco if __name__ == "__main__":. Caso queira testar o arquivo INDIVIDUALM
 O main.py será o único ponto de entrada do projeto, 
 responsável por orquestrar a criação de toda a infraestrutura.
 
-'''
 if __name__ == "__main__":
     # Obtém o ID da conta AWS
     account_id = boto3.client('sts').get_caller_identity().get('Account')
@@ -250,3 +261,4 @@ if __name__ == "__main__":
 
     logger.info("Criando Lambdas com a configuração fornecida...")
     create_lambdas_main(lambda_config)
+'''
