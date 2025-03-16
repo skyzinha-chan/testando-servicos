@@ -1,0 +1,46 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "logs:CreateLogGroup",
+      "Resource": "arn:aws:logs:us-east-1:961341525606:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": [
+        "arn:aws:logs:us-east-1:961341525606:log-group:/aws/lambda/sprint4-grupo6-api-lambda-s3:*",
+        "arn:aws:logs:us-east-1:961341525606:log-group:/aws/lambda/sprint4-grupo6-bucketlambda:*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:PutObjectAcl",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:CopyObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::sprint4-grupo6-origem/*",
+        "arn:aws:s3:::sprint4-grupo6-destino/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["textract:DetectDocumentText"],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["lambda:InvokeFunction"],
+      "Resource": [
+        "arn:aws:lambda:us-east-1:961341525606:function:sprint4-grupo6-bucketlambda"
+      ]
+    }
+  ]
+}
+
+# Alterar invokes conforme outras lambdas inseridas, alterar autorização conforme necessário. Apagar comentário

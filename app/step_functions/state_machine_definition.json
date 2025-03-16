@@ -1,0 +1,26 @@
+{
+  "Comment": "Fluxo de processamento de nota fiscal",
+  "StartAt": "TextractLambda",
+  "States": {
+    "TextractLambda": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:REGION:ACCOUNT_ID:function:textract_lambda",
+      "Next": "NLPLambda"
+    },
+    "NLPLambda": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:REGION:ACCOUNT_ID:function:nlp_lambda",
+      "Next": "MoveLambda"
+    },
+    "MoveLambda": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:REGION:ACCOUNT_ID:function:move_lambda",
+      "Next": "ReturnResult"
+    },
+    "ReturnResult": {
+      "Type": "Pass",
+      "InputPath": "$.NLPLambdaResult", // Retorna apenas o resultado do NLP
+      "End": true
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::961341525606:role/service-role/sprint4-grupo6-bucketlambda-role-ew6l0mdd"
+      },
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:PutObjectAcl"],
+      "Resource": "arn:aws:s3:::sprint4-grupo6-destino/*"
+    }
+  ]
+}
+
+# Esta policie para caso utilizar buckets de destino diferentes, caso não, a bucket origin realiza as mudanças entre pastas conforme necessário sendo preciso alterar a variável de ambiente na lambda

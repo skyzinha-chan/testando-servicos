@@ -1,0 +1,28 @@
+# api_gateway_config.yaml
+#   Define a estrutura da API (endpoints, métodos)
+# Exemplo básico:
+openapi: 3.0.0
+info:
+  title: API Processamento de Notas Fiscais
+  version: 1.0.0
+paths:
+  /api/v1/invoice:
+    post:
+      summary: Upload de Nota Fiscal Eletrônica
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Sucesso no upload
+        '400':
+          description: Requisição inválida
+        '500':
+          description: Erro interno do servidor

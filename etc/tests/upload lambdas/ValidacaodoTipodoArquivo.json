@@ -1,0 +1,7 @@
+{
+  "body": "base64-encoded-file-content",
+  "headers": {
+    "filename": "documento.pdf"
+  },
+  "isBase64Encoded": true
+}
