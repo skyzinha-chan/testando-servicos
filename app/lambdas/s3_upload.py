@@ -204,6 +204,10 @@ def lambda_handler(event, context):
     if upload_response['statusCode'] == 200:
         # Verifica se o ARN do Step Functions está definido
         step_function_arn = os.environ.get('STEP_FUNCTIONS_ARN')
+
+        # Inicializa input_data como um dicionário vazio
+        input_data = {}
+
         if step_function_arn:
             logger.info("Iniciando execução do Step Functions.")
             # Inicia a execução do Step Functions
