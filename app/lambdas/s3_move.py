@@ -1,4 +1,4 @@
-# app/lambdas/s3_move_lambda.py  Move as notas fiscais no S3 com base no pagamento.
+# app/lambdas/s3_move.py  Move as notas fiscais no S3 com base no pagamento.
 import json
 import boto3
 import os
