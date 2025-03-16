@@ -42,7 +42,7 @@ def wait_for_lambda_creation(lambda_name, timeout=300, sleep_interval=10):
 
 def create_initial_lambdas(infra_config):
     # Lambdas que já estão prontas
-    lambdas_existentes = ['s3_upload_lambda', 's3_move_lambda']
+    lambdas_existentes = ['s3_upload', 's3_move']
 
     # Pegamos os valores da infraestrutura
     role_arn = infra_config['role_arn']
@@ -190,7 +190,7 @@ def main():
         # Etapa 4: Criação da API Gateway e integração com as Lambdas
         logger.info("Criando a API Gateway...")
         api_url = create_api(
-            all_lambda_arns['s3_upload_lambda'])  # Passa o ARN da Lambda
+            all_lambda_arns['s3_upload'])  # Passa o ARN da Lambda
         if api_url:
             logger.info(f"API Gateway criado com sucesso. URL: {api_url}")
         else:
