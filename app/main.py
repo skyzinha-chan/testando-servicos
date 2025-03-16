@@ -69,17 +69,17 @@ def create_initial_lambdas(infra_config):
         'bucket_layers_name': bucket_layers_name,
         'bucket_imagens_name': bucket_imagens_name,
         'lambdas': {
-            's3_upload_lambda': {
+            's3_upload': {
                 # Caminho para o arquivo ZIP da layer
                 'layer_zip_path': layer_upload_zip_path,
-                'handler': 's3_upload_lambda.lambda_handler',
+                'handler': 's3_upload.lambda_handler',
                 'description': 'Função Lambda para upload de arquivos S3',  # Adiciona a descrição
                 # Adiciona a descrição da layer
                 'layer_description': 'Layer de biblioteca para upload de arquivos S3'
             },
-            's3_move_lambda': {
+            's3_move': {
                 'layer_zip_path': None,  # Não há layer para s3_move_lambda
-                'handler': 's3_move_lambda.lambda_handler',
+                'handler': 's3_move.lambda_handler',
                 'description': 'Função Lambda para mover arquivos S3',  # Adiciona a descrição
                 'layer_description': None  # Não há layer para esta Lambda
             }
@@ -169,7 +169,7 @@ def main():
         # Passa infra_config como argumento
         initial_lambda_arns = create_initial_lambdas(
             infra_config)  # Obtemos os ARNs das Lambdas
-
+        '''
         # Etapa 3: Criação do Step Functions inicial
         logger.info("Criando o Step Functions inicial...")
         step_functions_arn = create_initial_step_functions(
@@ -182,7 +182,8 @@ def main():
         # Se você não tem outras Lambdas prontas, comente a linha abaixo
         # logger.info("Criando as Lambdas restantes...")
         # remaining_lambda_arns = create_remaining_lambdas(infra_config)
-
+        
+        '''
         # Combine os ARNs das Lambdas COMPLETAS         all_lambda_arns = {**initial_lambda_arns, **remaining_lambda_arns}
         all_lambda_arns = initial_lambda_arns  # Use apenas as Lambdas iniciais
 
@@ -195,6 +196,7 @@ def main():
         else:
             logger.error("Falha ao criar o API Gateway.")
 
+        '''
         # Etapa 5: Criação do Step Functions (comentado, pois ainda está em desenvolvimento)
         # Atualiza o Step Functions com as novas Lambdas
         # logger.info("Atualizando o Step Functions com as novas Lambdas...")
@@ -206,6 +208,8 @@ def main():
         # for lambda_name in all_lambda_arns.keys():
         #    update_lambda_with_step_function_arn(
         #        lambda_name, step_functions_arn)  # Atualiza cada Lambda
+        
+        '''
 
         logger.info(
             "Todos os recursos foram criados e configurados com sucesso.")
