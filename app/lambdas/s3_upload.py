@@ -1,115 +1,239 @@
-# app/lambdas/s3_move.py  Move as notas fiscais no S3 com base no pagamento.
+# app/lambdas/s3_upload.py    Salva os dados processados no Amazon S3
 import json
 import boto3
 import os
-from botocore.exceptions import NoCredentialsError, ClientError
+import base64
+from botocore.exceptions import NoCredentialsError
 import logging
+from requests_toolbelt.multipart import decoder
+import time
 
-# Configuração do logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configuração do logger (ajustado para produção)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)  # Apenas warning e erros em produção
+
+# Cliente do Step Functions
+stepfunctions_client = boto3.client('stepfunctions')
 
 
-class S3Mover:
-    def __init__(self, source_bucket):
-        # Inicializa o cliente S3
+class S3Uploader:
+    """Classe responsável por fazer upload de arquivos para o S3."""
+
+    def __init__(self, bucket_name):
         self.s3 = boto3.client('s3')
-        self.source_bucket = source_bucket
+        self.bucket_name = bucket_name
 
-    def move_file(self, source_key,  destination_folder):
+    def upload_file(self, file_name, file_content):
         """
-        Move um arquivo na bucket S3.
+        Faz o upload de um arquivo para o S3.
 
         Parâmetros:
-            source_key (str): Caminho do arquivo no bucket de origem.
-            destination_folder (str): Pasta de destino no bucket de destino.
+            file_name (str): Nome do arquivo a ser salvo.
+            file_content (bytes): Conteúdo do arquivo.
 
         Retorno:
-            bool: True se o arquivo foi movido com sucesso, False caso contrário.
+            dict: Resposta com status e mensagem.
         """
         try:
-            # Define o caminho de destino do arquivo no bucket de destino
-            destination_key = f"{destination_folder}/{os.path.basename(source_key)}"
-
-            # Copia o arquivo do bucket de origem para a bucket pasta de destino
-            copy_source = {'Bucket': self.source_bucket, 'Key': source_key}
-            self.s3.copy_object(CopySource=copy_source,
-                                Bucket=self.source_bucket, Key=destination_key)
-
-            # Exclui o arquivo do bucket de origem após a cópia
-            self.s3.delete_object(Bucket=self.source_bucket, Key=source_key)
-
+            logger.info(f"Iniciando upload do arquivo {file_name} para o S3.")
+            # Faz o upload do arquivo para o bucket S3
+            self.s3.put_object(
+                Bucket=self.bucket_name,
+                Key=file_name,
+                Body=file_content
+            )
             logger.info(
-                f"Arquivo movido com sucesso: {source_key} -> {destination_key}")
-            return True
-        except ClientError as e:
-            # Log de erro caso ocorra uma falha ao mover o arquivo
-            logger.error(f"Erro ao mover o arquivo: {e}")
-            return False
+                f"Upload do arquivo {file_name} concluído com sucesso.")
+            return {
+                'statusCode': 200,
+                'body': json.dumps({'file_name': file_name})
+            }
+        except Exception as e:
+            logger.error(f"Erro ao fazer upload: {str(e)}")
+            return {
+                'statusCode': 500,
+                'body': json.dumps({'error': 'Erro interno no servidor. Tente novamente mais tarde.'})
+            }
 
 
-class MoveLambdaHandler:
+class LambdaHandler:
+    """Classe que gerencia o processamento do evento da Lambda."""
+
     def __init__(self, event):
         self.event = event
-        # Obtém os nomes dos buckets de origem e destino das variáveis de ambiente
-        self.source_bucket = os.environ['SOURCE_BUCKET']
-        self.mover = S3Mover(self.source_bucket)
+        # Obtém o nome do bucket de origem a partir da variável de ambiente
+        self.bucket_name = os.environ['SOURCE_BUCKET']
+        self.uploader = S3Uploader(self.bucket_name)
 
     def validate_event(self):
-        """
-        Valida os dados do evento recebido.
+        """Valida o evento recebido."""
+        logger.info("Validando evento recebido.")
+        # Verifica se o corpo da requisição está no formato multipart/form-data
+        if 'body' not in self.event:
+            logger.warning("Evento sem corpo. Formato inválido.")
+            return False, 'Formato de requisição inválido. Use multipart/form-data.'
 
-        Retorno:
-            tuple: (bool, str ou tuple) - True se válido, False e mensagem de erro se inválido.
-        """
-        # Extrai os dados do evento
-        # Caminho do arquivo no bucket de origem
-        source_key = self.event.get('source_key')
-        # Método de pagamento (ex: "dinheiro", "pix", "outros")
-        payment_method = self.event.get('payment_method')
+        # Extrai o nome do arquivo e o conteúdo do corpo da requisição
+        content_type = self.event['headers'].get('Content-Type', '')
+        if 'multipart/form-data' not in content_type:
+            logger.warning(f"Formato de conteúdo inválido: {content_type}")
+            return False, 'Formato inválido. Envie como multipart/form-data.'
 
-        # Valida se os campos obrigatórios foram fornecidos e são strings válidas
-        if not source_key or not isinstance(source_key, str):
-            return False, 'O campo "source_key" é obrigatório e deve ser uma string válida.'
+        body = self.event['body']
+        if self.event.get('isBase64Encoded', False):
+            try:
+                logger.info("Decodificando corpo da requisição (Base64).")
+                # Decodifica o corpo da requisição (que está em Base64)
+                body = base64.b64decode(body)
+            except Exception as e:
+                logger.error(f"Erro ao decodificar Base64: {str(e)}")
+                return False, 'Erro ao processar o arquivo.'
 
-        if not payment_method or not isinstance(payment_method, str):
-            return False, 'O campo "payment_method" é obrigatório e deve ser uma string válida.'
+        # Decodifica o corpo da requisição (que é um multipart/form-data)
+        try:
+            logger.info("Decodificando multipart/form-data.")
+            multipart_data = decoder.MultipartDecoder(body, content_type)
+        except Exception as e:
+            logger.error(f"Erro ao decodificar multipart: {str(e)}")
+            return False, 'Erro ao processar arquivo.'
 
-        return True, (source_key, payment_method)
+        # Extrai o nome do arquivo e o conteúdo do arquivo
+        for part in multipart_data.parts:
+            if part.headers.get(b'Content-Disposition'):
+                disposition = part.headers[b'Content-Disposition'].decode()
+
+                if 'filename=' in disposition:
+                    file_name = disposition.split(
+                        'filename=')[-1].strip().replace('"', '')
+                    file_content = part.content
+
+                    # Valida se o arquivo é uma imagem (PNG, JPG ou JPEG)
+                    if not file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                        logger.warning(
+                            f"Arquivo {file_name} não é uma imagem válida.")
+                        return False, 'O arquivo deve ser uma imagem (PNG, JPG, JPEG).'
+
+                    logger.info(f"Arquivo {file_name} validado com sucesso.")
+                    return True, (file_name, file_content)
+
+        logger.warning("Nenhum arquivo encontrado no corpo da requisição.")
+        return False, 'Nenhum arquivo encontrado no corpo da requisição.'
 
     def handle(self):
         """
-        Processa o evento e move o arquivo no S3 com base no método de pagamento.
+        Função principal que processa o evento e realiza o upload.
+
+        Retorno:
+            dict: Resposta com statusCode e corpo da mensagem (sucesso ou erro).
         """
-        is_valid, validation_message = self.validate_event()
-        if not is_valid:
-            logger.error(f"Evento inválido: {validation_message}")
-            raise ValueError(validation_message)
+        try:
+            logger.info("Iniciando processamento do evento.")
+            is_valid, validation_message = self.validate_event()
+            if not is_valid:
+                logger.warning(f"Evento inválido: {validation_message}")
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps({'error': validation_message})
+                }
 
-        source_key, payment_method = validation_message
+            file_name, file_content = validation_message
+            logger.info(f"Processando arquivo {file_name}.")
+            upload_response = self.uploader.upload_file(
+                file_name, file_content)
 
-        # Define a pasta de destino com base no método de pagamento
-        destination_folder = "dinheiro" if payment_method.lower() in [
-            "dinheiro", "pix"] else "outros"
+            return upload_response
 
-        # Move o arquivo
-        if not self.mover.move_file(source_key, destination_folder):
-            raise RuntimeError(
-                f"Erro ao mover o arquivo {source_key} para {destination_folder}.")
+        except NoCredentialsError:
+            logger.error("Credenciais da AWS não encontradas.")
+            # Retorna erro caso as credenciais da AWS não sejam encontradas
+            return {
+                'statusCode': 500,
+                'body': json.dumps({'error': 'Credenciais da AWS não encontradas.'})
+            }
+        except Exception as e:
+            # Retorna erro genérico com detalhes da exceção
+            logger.error(f"Erro inesperado: {str(e)}")
+            return {
+                'statusCode': 500,
+                'body': json.dumps({'error': 'Erro interno no servidor. Tente novamente mais tarde.'})
+            }
+
+
+def retry_step_function_execution(input_data, stepfunctions_client, state_machine_arn, retries=3, backoff=2):
+    """
+    Tenta executar o Step Functions com retry.
+
+    Parameters:
+        input_data (dict): Dados para enviar ao Step Functions.
+        stepfunctions_client (boto3.client): Cliente do Step Functions.
+        state_machine_arn (str): ARN do Step Function.
+        retries (int): Número máximo de tentativas.
+        backoff (int): Multiplicador para tempo de espera entre tentativas.
+
+    Returns:
+        dict: Resposta do Step Functions.
+    """
+    for attempt in range(1, retries + 1):
+        try:
+            response = stepfunctions_client.start_sync_execution(
+                stateMachineArn=state_machine_arn,
+                input=json.dumps(input_data)
+            )
+            logger.info(
+                f"Execução do Step Functions iniciada. ID: {response['executionArn']}")
+            return {
+                'statusCode': 200,
+                # O resultado final do Step Functions
+                'body': response['output']
+            }  # Se bem-sucedido, retorna a resposta
+        except Exception as e:
+            logger.error(
+                f"Tentativa {attempt} falhou ao iniciar Step Functions: {str(e)}")
+            if attempt == retries:
+                raise  # Levanta a exceção após o número máximo de tentativas
+            time.sleep(backoff * attempt)  # Aguarda antes de tentar novamente
 
 
 def lambda_handler(event, context):
-    """
-    Função principal da Lambda que processa o evento.
-    """
-    logger.info("Iniciando processamento do evento na Lambda s3_move_lambda.")
-    try:
-        handler = MoveLambdaHandler(event)
-        handler.handle()
-        logger.info("Processamento concluído com sucesso.")
-    except ValueError as ve:
-        logger.error(f"Erro de validação: {ve}")
-    except RuntimeError as re:
-        logger.error(f"Erro ao mover arquivo: {re}")
-    except Exception as e:
-        logger.error(f"Erro inesperado: {e}")
+    """Função de entrada da Lambda."""
+    logger.info("Lambda iniciada.")
+    handler = LambdaHandler(event)
+    upload_response = handler.handle()
+
+    # Verifica se o upload foi bem-sucedido
+    if upload_response['statusCode'] == 200:
+        # Verifica se o ARN do Step Functions está definido
+        step_function_arn = os.environ.get('STEP_FUNCTIONS_ARN')
+        if step_function_arn:
+            logger.info("Iniciando execução do Step Functions.")
+            # Inicia a execução do Step Functions
+            stepfunctions_client = boto3.client('stepfunctions')
+
+            # Prepara a entrada para o Step Functions
+            input_data = {
+                "bucket_name": handler.bucket_name,
+                "file_name": json.loads(upload_response['body'])['file_name']
+            }
+
+        try:
+            # Tentativas com backoff
+            response = retry_step_function_execution(
+                input_data, stepfunctions_client, step_function_arn)
+            logger.info(
+                f"Execução do Step Functions iniciada com sucesso. ID: {response['executionArn']}")
+            upload_response['body'] = json.dumps({
+                **json.loads(upload_response['body']),
+                "execution_arn": response['executionArn']
+            })
+        except Exception as e:
+            logger.error(
+                f"Erro ao iniciar o Step Functions após várias tentativas: {str(e)}")
+            upload_response['body'] = json.dumps(
+                {'error': 'Falha ao iniciar Step Functions.'})
+    else:
+        logger.warning(
+            "ARN do Step Functions não definido. Apenas o upload foi realizado.")
+
+    return upload_response
+
+# O código acima é responsável por fazer o upload de um arquivo para o Amazon S3 e iniciar a execução de um Step Functions. O Step Functions é responsável por orquestrar o processamento do arquivo, que será feito por outras lambdas.
