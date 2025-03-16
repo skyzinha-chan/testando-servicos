@@ -250,9 +250,9 @@ if __name__ == "__main__":
         # Substitua pelo nome do seu bucket de imagens
         'bucket_imagens_name': 'sprint4-grupo6-imagens-talita',
         'lambdas': {
-            's3_upload_lambda': {
+            's3_upload': {
                 'layer_zip_path': 'app/layers/upload_layer/upload_layer.zip',
-                'handler': 's3_upload_lambda.lambda_handler',
+                'handler': 's3_upload.lambda_handler',
                 'description': 'Função Lambda para upload de arquivos S3',
                 'layer_description': 'Layer de biblioteca para upload de arquivos S3'
             }
