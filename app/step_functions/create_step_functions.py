@@ -140,7 +140,7 @@ def wait_for_step_function(step_function_arn):
             response = stepfunctions_client.describe_state_machine(
                 stateMachineArn=step_function_arn
             )
-            logger.info("Step Function está ativo.")
+            logger.info(f"Step Function está ativo. Status: {response['status']}")
             break
         except stepfunctions_client.exceptions.StateMachineDoesNotExist:
             logger.info(
